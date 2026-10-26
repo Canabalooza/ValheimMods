@@ -1,275 +1,349 @@
-﻿using BepInEx;
+using System.Collections.Generic;
+using BepInEx;
 using BepInEx.Configuration;
 using HarmonyLib;
-using System.Collections.Generic;
-using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-namespace SimpleSort
+namespace SimpleSort;
+
+[BepInPlugin(PluginGuid, PluginName, PluginVersion)]
+public sealed class BepInExPlugin : BaseUnityPlugin
 {
-    [BepInPlugin("aedenthorn.SimpleSort", "Simple Sort", "0.9.0")]
-    public class BepInExPlugin: BaseUnityPlugin
+    private const string PluginGuid = "aedenthorn.SimpleSort";
+    private const string PluginName = "Simple Sort";
+    private const string PluginVersion = "1.0.0";
+
+    private enum SortType
     {
-        public static readonly bool isDebug = true;
-        public static BepInExPlugin context;
-        public Harmony harmony;
+        Name,
+        Weight,
+        Value,
+    }
 
-        public static ConfigEntry<bool> modEnabled;
-        public static ConfigEntry<bool> useGamePad;
-        public static ConfigEntry<bool> allowPlayerInventorySort;
-        public static ConfigEntry<bool> playerStickySort;
-        public static ConfigEntry<bool> containerStickySort;
-        public static ConfigEntry<SortType> playerSortType;
-        public static ConfigEntry<SortType> containerSortType;
-        public static ConfigEntry<bool> playerSortAsc;
-        public static ConfigEntry<bool> containerSortAsc;
-        public static ConfigEntry<string> ascModKey;
-        public static ConfigEntry<string> descModKey;
-        public static ConfigEntry<string> sortByNameKey;
-        public static ConfigEntry<string> sortByWeightKey;
-        public static ConfigEntry<string> sortByValueKey;
-        public static ConfigEntry<int> playerSortStartRow;
-        public static ConfigEntry<int> playerSortEndRow;
-        public static ConfigEntry<int> nexusID;
+    private static BepInExPlugin _instance = null!;
+    private static ConfigEntry<bool> _modEnabled = null!;
+    private static ConfigEntry<bool> _useGamepad = null!;
+    private static ConfigEntry<bool> _allowPlayerInventorySort = null!;
+    private static ConfigEntry<bool> _playerStickySort = null!;
+    private static ConfigEntry<bool> _containerStickySort = null!;
+    private static ConfigEntry<SortType> _playerSortType = null!;
+    private static ConfigEntry<SortType> _containerSortType = null!;
+    private static ConfigEntry<bool> _playerSortAscending = null!;
+    private static ConfigEntry<bool> _containerSortAscending = null!;
+    private static ConfigEntry<string> _ascendingModifierKey = null!;
+    private static ConfigEntry<string> _descendingModifierKey = null!;
+    private static ConfigEntry<string> _sortByNameKey = null!;
+    private static ConfigEntry<string> _sortByWeightKey = null!;
+    private static ConfigEntry<string> _sortByValueKey = null!;
+    private static ConfigEntry<int> _playerSortStartRow = null!;
+    private static ConfigEntry<int> _playerSortEndRow = null!;
 
-        public enum SortType
+    private Harmony _harmony = null!;
+
+    private void Awake()
+    {
+        _instance = this;
+        _modEnabled = Config.Bind("General", "Enabled", true, "Enable this mod.");
+        _useGamepad = Config.Bind("General", "UseGamepad", true, "Allow sorting with a gamepad.");
+        _allowPlayerInventorySort = Config.Bind("General", "AllowPlayerInventorySort", false, "Allow player inventory sorting. Off sorts containers only.");
+        _playerStickySort = Config.Bind("General", "PlayerStickySort", true, "Automatically apply the last sort type to the player inventory when opened.");
+        _containerStickySort = Config.Bind("General", "ContainerStickySort", true, "Automatically apply the last sort type to a container inventory when opened.");
+        _playerSortAscending = Config.Bind("General", "PlayerSortAscending", true, "Current player sort direction.");
+        _containerSortAscending = Config.Bind("General", "ContainerSortAscending", true, "Current container sort direction.");
+        _playerSortType = Config.Bind("General", "PlayerSortType", SortType.Name, "Current player sort type.");
+        _containerSortType = Config.Bind("General", "ContainerSortType", SortType.Name, "Current container sort type.");
+        _sortByValueKey = Config.Bind("Keyboard", "SortByValueKey", "v", "Sort by value key.");
+        _sortByWeightKey = Config.Bind("Keyboard", "SortByWeightKey", "h", "Sort by weight key.");
+        _sortByNameKey = Config.Bind("Keyboard", "SortByNameKey", "n", "Sort by name key.");
+        _ascendingModifierKey = Config.Bind("Keyboard", "AscendingModifierKey", "left alt", "Sort ascending modifier key.");
+        _descendingModifierKey = Config.Bind("Keyboard", "DescendingModifierKey", "left ctrl", "Sort descending modifier key.");
+        _playerSortStartRow = Config.Bind("General", "PlayerSortStartRow", 2, "Player sort start row.");
+        _playerSortEndRow = Config.Bind("General", "PlayerSortEndRow", -1, "Player sort end row; use -1 to sort to the end.");
+
+        _harmony = new Harmony(PluginGuid);
+        _harmony.PatchAll();
+    }
+
+    private void OnDestroy()
+    {
+        _harmony?.UnpatchSelf();
+    }
+
+    private static bool IsControllerSortModifierHeld()
+    {
+        if (!_modEnabled.Value || !_useGamepad.Value || !ZInput.IsGamepadActive())
         {
-            Name,
-            Weight,
-            Value
+            return false;
         }
 
-        public static void Dbgl(string str = "", bool pref = true)
-        {
-            if (isDebug)
-                Debug.Log((pref ? typeof(BepInExPlugin).Namespace + " " : "") + str);
-        }
-        public void Awake()
-        {
-            context = this;
-            modEnabled = Config.Bind<bool>("General", "Enabled", true, "Enable this mod");
-            useGamePad = Config.Bind<bool>("General", "useGamePad", false, "Allow sorting with gamepad?");
-            allowPlayerInventorySort = Config.Bind<bool>("General", "AllowPlayerInventorySort", true, "Allow player inventory sorting?");
-            playerStickySort = Config.Bind<bool>("General", "PlayerStickySort", true, "Automatically apply last sort type to player inventory on open");
-            containerStickySort = Config.Bind<bool>("General", "ContainerStickySort", true, "Automatically apply last sort type to container inventory on open");
-            playerSortAsc = Config.Bind<bool>("General", "playerSortAsc", true, "Current player sort method (changes automatically for sticky sorting)");
-            containerSortAsc = Config.Bind<bool>("General", "containerSortAsc", true, "Current container sort method (changes automatically for sticky sorting)");
-            playerSortType = Config.Bind<SortType>("General", "PlayerSortType", SortType.Name, "Current player sort type (changes automatically for sticky sorting)");
-            containerSortType = Config.Bind<SortType>("General", "ContainerSortType", SortType.Name, "Current container sort type (changes automatically for sticky sorting)");
-            sortByValueKey = Config.Bind<string>("General", "SortByValueKey", "v", "Sort by value key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
-            sortByWeightKey = Config.Bind<string>("General", "SortByWeightKey", "h", "Sort by weight key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
-            sortByNameKey = Config.Bind<string>("General", "SortByNameKey", "n", "Sort by name key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
-            ascModKey = Config.Bind<string>("General", "AscModKey", "left alt", "Sort ascending mod key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
-            descModKey = Config.Bind<string>("General", "DescModKey", "left ctrl", "Sort descending mod key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
-            playerSortStartRow = Config.Bind<int>("General", "PlayerSortStartRow", 2, "Player sort start row");
-            playerSortEndRow = Config.Bind<int>("General", "PlayerSortEndRow", -1, "Player sort end row (use -1 to sort to the end)");
-            nexusID = Config.Bind<int>("General", "NexusID", 584, "Nexus mod ID for updates");
+        string modifier = ZInput.IsNonClassicFunctionality() ? "JoyAltKeys" : "JoyAltPlace";
+        return ZInput.instance != null && ZInput.GetButton(modifier);
+    }
 
-            if (!modEnabled.Value)
+    private static bool IsControllerSortChord()
+    {
+        return IsControllerSortModifierHeld()
+               && (ZInput.GetButton("JoyDPadLeft")
+                   || ZInput.GetButton("JoyDPadUp")
+                   || ZInput.GetButton("JoyDPadRight"));
+    }
+
+    private static bool TryGetControllerSort(out SortType sortType)
+    {
+        sortType = SortType.Name;
+        if (!IsControllerSortModifierHeld())
+        {
+            return false;
+        }
+
+        if (ZInput.GetButtonDown("JoyDPadLeft"))
+        {
+            sortType = SortType.Name;
+            return true;
+        }
+
+        if (ZInput.GetButtonDown("JoyDPadUp"))
+        {
+            sortType = SortType.Weight;
+            return true;
+        }
+
+        if (ZInput.GetButtonDown("JoyDPadRight"))
+        {
+            sortType = SortType.Value;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool NextDirection(SortType requested, SortType current, bool currentAscending)
+    {
+        return requested != current || !currentAscending;
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), nameof(InventoryGui.Show))]
+    private static class InventoryGuiShowPatch
+    {
+        private static void Postfix(Container ___m_currentContainer)
+        {
+            if (!_modEnabled.Value)
+            {
                 return;
-            harmony = new Harmony(Info.Metadata.GUID);
-            harmony.PatchAll();
-        }
+            }
 
-        public void OnDestroy()
-        {
-            Dbgl("Destroying plugin");
-            harmony.UnpatchAll();
-        }
-
-        [HarmonyPatch(typeof(InventoryGui), "Show")]
-        public static class InventoryGui_Show_Patch
-        {
-            public static void Postfix(Container ___m_currentContainer)
+            if (Player.m_localPlayer && _playerStickySort.Value && _allowPlayerInventorySort.Value)
             {
-                if (!modEnabled.Value)
+                SortByType(_playerSortType.Value, Player.m_localPlayer.GetInventory(), _playerSortAscending.Value, true);
+            }
+
+            if (_containerStickySort.Value && ___m_currentContainer?.GetInventory() != null)
+            {
+                SortByType(_containerSortType.Value, ___m_currentContainer.GetInventory(), _containerSortAscending.Value, false);
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryGui), nameof(InventoryGui.Update))]
+    private static class InventoryGuiUpdatePatch
+    {
+        private static void Postfix(InventoryGui __instance, Container ___m_currentContainer, int ___m_activeGroup)
+        {
+            if (!_modEnabled.Value)
+            {
+                return;
+            }
+
+            string inventoryName = string.Empty;
+            SortType sortType = SortType.Name;
+            bool ascending = true;
+
+            if (Input.GetKey(_ascendingModifierKey.Value.ToLowerInvariant())
+                || Input.GetKey(_descendingModifierKey.Value.ToLowerInvariant()))
+            {
+                ascending = Input.GetKey(_ascendingModifierKey.Value.ToLowerInvariant());
+                TryGetKeyboardSort(ref inventoryName, ref sortType);
+            }
+
+            if (inventoryName.Length == 0 && TryGetControllerSort(out sortType))
+            {
+                if (___m_activeGroup == 0 && !__instance.IsContainerOpen())
+                {
                     return;
-                if(Player.m_localPlayer && playerStickySort.Value && allowPlayerInventorySort.Value)
-                {
-                    SortByType(playerSortType.Value, Player.m_localPlayer.GetInventory(), playerSortAsc.Value, true);
                 }
-                if(containerStickySort.Value && ___m_currentContainer?.GetInventory() != null)
+
+                if (___m_activeGroup == 0)
                 {
-                    SortByType(containerSortType.Value, ___m_currentContainer.GetInventory(), containerSortAsc.Value, false);
+                    inventoryName = "Container";
+                    ascending = NextDirection(sortType, _containerSortType.Value, _containerSortAscending.Value);
                 }
-            }
-        }
-
-        [HarmonyPatch(typeof(InventoryGui), "Update")]
-        public static class InventoryGui_Update_Patch
-        {
-            public static void Postfix(InventoryGui __instance, Container ___m_currentContainer, int ___m_activeGroup)
-            {
-                Vector3 mousePos = Input.mousePosition;
-                if (!modEnabled.Value)
-                    return;
-
-
-
-                if (AedenthornUtils.CheckKeyHeld(ascModKey.Value, false) || AedenthornUtils.CheckKeyHeld(descModKey.Value, false))
+                else if (___m_activeGroup == 1)
                 {
-                    bool asc = AedenthornUtils.CheckKeyHeld(ascModKey.Value, false);
-                    if (AedenthornUtils.CheckKeyHeld(descModKey.Value, true))
-                        asc = false;
-
-                    string name = "";
-                    SortType type = SortType.Name;
-
-                    PointerEventData eventData = new PointerEventData(EventSystem.current)
-                    {
-                        position = mousePos
-                    };
-                    List<RaycastResult> raycastResults = new List<RaycastResult>();
-                    EventSystem.current.RaycastAll(eventData, raycastResults);
-                    foreach (RaycastResult rcr in raycastResults)
-                    {
-
-                        if (rcr.gameObject.layer == LayerMask.NameToLayer("UI") && rcr.gameObject.name == "Bkg" && (rcr.gameObject.transform.parent.name == "Player" || rcr.gameObject.transform.parent.name == "Container"))
-                        {
-                            if (AedenthornUtils.CheckKeyDown(sortByNameKey.Value))
-                            {
-                                name = rcr.gameObject.transform.parent.name;
-                                type = SortType.Name;
-                                break;
-                            }
-                            else if (AedenthornUtils.CheckKeyDown(sortByWeightKey.Value))
-                            {
-                                name = rcr.gameObject.transform.parent.name;
-                                type = SortType.Weight;
-                                break;
-                            }
-                            else if (AedenthornUtils.CheckKeyDown(sortByValueKey.Value))
-                            {
-                                name = rcr.gameObject.transform.parent.name;
-                                type = SortType.Value;
-                                break;
-                            }
-                            return;
-                        }
-                    }
-                    if (name == "" && useGamePad.Value)
-                    {
-                        if (___m_activeGroup == 0 && !__instance.IsContainerOpen())
-                            return;
-
-                        if (___m_activeGroup == 0 || ___m_activeGroup == 1)
-                        {
-                            if (AedenthornUtils.CheckKeyDown(sortByNameKey.Value))
-                            {
-                                name = ___m_activeGroup == 0 ? "Container" : "Player";
-                                type = SortType.Name;
-                            }
-                            else if (AedenthornUtils.CheckKeyDown(sortByWeightKey.Value))
-                            {
-                                name = ___m_activeGroup == 0 ? "Container" : "Player";
-                                type = SortType.Weight;
-                            }
-                            else if (AedenthornUtils.CheckKeyDown(sortByValueKey.Value))
-                            {
-                                name = ___m_activeGroup == 0 ? "Container" : "Player";
-                                type = SortType.Value;
-                            }
-                        }
-                    }
-
-                    if (name == "" || (name == "Player" && !allowPlayerInventorySort.Value))
-                        return;
-
-                    Dbgl($"Sorting {name} inventory by {type} {(asc ? "asc" : "desc")}");
-                    if (name == "Player")
-                    {
-                        playerSortType.Value = type;
-                        playerSortAsc.Value = asc;
-                        context.Config.Save();
-                        SortByType(type, Player.m_localPlayer.GetInventory(), asc, true);
-                    }
-                    else if (name == "Container")
-                    {
-                        containerSortType.Value = type;
-                        containerSortAsc.Value = asc;
-                        context.Config.Save();
-                        SortByType(type, ___m_currentContainer.GetInventory(), asc, false);
-                    }
+                    inventoryName = "Player";
+                    ascending = NextDirection(sortType, _playerSortType.Value, _playerSortAscending.Value);
                 }
             }
+
+            if (inventoryName.Length == 0 || inventoryName == "Player" && !_allowPlayerInventorySort.Value)
+            {
+                return;
+            }
+
+            if (inventoryName == "Player")
+            {
+                _playerSortType.Value = sortType;
+                _playerSortAscending.Value = ascending;
+                SortByType(sortType, Player.m_localPlayer.GetInventory(), ascending, true);
+            }
+            else if (___m_currentContainer?.GetInventory() != null)
+            {
+                _containerSortType.Value = sortType;
+                _containerSortAscending.Value = ascending;
+                SortByType(sortType, ___m_currentContainer.GetInventory(), ascending, false);
+            }
+
+            _instance.Config.Save();
         }
 
-        public static void SortByType(SortType type, Inventory inventory, bool asc, bool player)
+        private static void TryGetKeyboardSort(ref string inventoryName, ref SortType sortType)
         {
-            // combine
-            var items = inventory.GetAllItems();
-            SortUtils.SortByName(items, true, player);
-
-            for (int i = 0; i < items.Count; i++)
+            PointerEventData eventData = new(EventSystem.current)
             {
-                if (player && ((playerSortStartRow.Value > 1 && items[i].m_gridPos.y < playerSortStartRow.Value - 1) || (playerSortEndRow.Value > 0 && items[i].m_gridPos.y >= playerSortEndRow.Value)))
+                position = Input.mousePosition,
+            };
+            List<RaycastResult> results = new();
+            EventSystem.current.RaycastAll(eventData, results);
+
+            foreach (RaycastResult result in results)
+            {
+                Transform parent = result.gameObject.transform.parent;
+                if (result.gameObject.layer != LayerMask.NameToLayer("UI")
+                    || result.gameObject.name != "Bkg"
+                    || parent == null
+                    || parent.name != "Player" && parent.name != "Container")
+                {
                     continue;
+                }
 
-                while (i < items.Count - 1 && items[i].m_stack < items[i].m_shared.m_maxStackSize && items[i + 1].m_shared.m_name == items[i].m_shared.m_name)
+                if (Input.GetKeyDown(_sortByNameKey.Value.ToLowerInvariant()))
                 {
-                    int amount = Mathf.Min(items[i].m_shared.m_maxStackSize - items[i].m_stack, items[i + 1].m_stack);
-                    items[i].m_stack += amount;
-                    if (amount == items[i + 1].m_stack)
-                    {
-                        items.RemoveAt(i + 1);
-                    }
-                    else
-                        items[i + 1].m_stack -= amount;
+                    inventoryName = parent.name;
+                    sortType = SortType.Name;
+                }
+                else if (Input.GetKeyDown(_sortByWeightKey.Value.ToLowerInvariant()))
+                {
+                    inventoryName = parent.name;
+                    sortType = SortType.Weight;
+                }
+                else if (Input.GetKeyDown(_sortByValueKey.Value.ToLowerInvariant()))
+                {
+                    inventoryName = parent.name;
+                    sortType = SortType.Value;
+                }
+
+                return;
+            }
+        }
+    }
+
+    [HarmonyPatch(typeof(InventoryGrid), nameof(InventoryGrid.UpdateGamepad))]
+    private static class InventoryGridUpdateGamepadPatch
+    {
+        private static bool Prefix()
+        {
+            return !IsControllerSortChord();
+        }
+    }
+
+    [HarmonyPatch(typeof(HotkeyBar), nameof(HotkeyBar.Update))]
+    private static class HotkeyBarUpdatePatch
+    {
+        private static bool Prefix()
+        {
+            return !IsControllerSortChord();
+        }
+    }
+
+    [HarmonyPatch(typeof(Player), nameof(Player.StartGuardianPower))]
+    private static class PlayerStartGuardianPowerPatch
+    {
+        private static bool Prefix()
+        {
+            return !IsControllerSortChord();
+        }
+    }
+
+    private static void SortByType(SortType type, Inventory inventory, bool ascending, bool player)
+    {
+        List<ItemDrop.ItemData> items = inventory.GetAllItems();
+        SortUtils.SortByName(items, true);
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (player && !IsPlayerItemInSortRows(items[i]))
+            {
+                continue;
+            }
+
+            while (i < items.Count - 1
+                   && items[i].m_stack < items[i].m_shared.m_maxStackSize
+                   && items[i + 1].m_shared.m_name == items[i].m_shared.m_name)
+            {
+                int amount = Mathf.Min(items[i].m_shared.m_maxStackSize - items[i].m_stack, items[i + 1].m_stack);
+                items[i].m_stack += amount;
+                if (amount == items[i + 1].m_stack)
+                {
+                    items.RemoveAt(i + 1);
+                }
+                else
+                {
+                    items[i + 1].m_stack -= amount;
                 }
             }
-            switch (type)
-            {
-                case SortType.Name:
-                    SortUtils.SortByName(items, asc, player);
-                    break;
-                case SortType.Weight:
-                    SortUtils.SortByWeight(items, asc, player);
-                    break;
-                case SortType.Value:
-                    SortUtils.SortByValue(items, asc, player);
-                    break;
-            }
-            SortToGrid(inventory, player);
         }
-        public static void SortToGrid(Inventory inventory, bool player)
+
+        switch (type)
         {
-            List<ItemDrop.ItemData> items = inventory.GetAllItems();
-            int width = Traverse.Create(inventory).Field("m_width").GetValue<int>();
-
-            int idx = 0;
-            for (int i = 0; i < items.Count; i++)
-            {
-                if (player && ((playerSortStartRow.Value > 1 && items[i].m_gridPos.y < playerSortStartRow.Value - 1) || (playerSortEndRow.Value > 0 && items[i].m_gridPos.y >= playerSortEndRow.Value)))
-                    continue;
-
-                int x = idx % width;
-                int y = idx / width + (player ? playerSortStartRow.Value - 1 : 0);
-                items[i].m_gridPos = new Vector2i(x, y);
-                idx++;
-            }
-            AccessTools.Method(typeof(Inventory), "Changed").Invoke(inventory, new object[] { false, false });
+            case SortType.Name:
+                SortUtils.SortByName(items, ascending);
+                break;
+            case SortType.Weight:
+                SortUtils.SortByWeight(items, ascending);
+                break;
+            case SortType.Value:
+                SortUtils.SortByValue(items, ascending);
+                break;
         }
 
+        SortToGrid(inventory, player);
+    }
 
-        [HarmonyPatch(typeof(Terminal), "InputText")]
-        public static class InputText_Patch
+    private static bool IsPlayerItemInSortRows(ItemDrop.ItemData item)
+    {
+        return (_playerSortStartRow.Value <= 1 || item.m_gridPos.y >= _playerSortStartRow.Value - 1)
+               && (_playerSortEndRow.Value <= 0 || item.m_gridPos.y < _playerSortEndRow.Value);
+    }
+
+    private static void SortToGrid(Inventory inventory, bool player)
+    {
+        List<ItemDrop.ItemData> items = inventory.GetAllItems();
+        int width = inventory.GetWidth();
+        int index = 0;
+
+        foreach (ItemDrop.ItemData item in items)
         {
-            public static bool Prefix(Terminal __instance)
+            if (player && !IsPlayerItemInSortRows(item))
             {
-                if (!modEnabled.Value)
-                    return true;
-                string text = __instance.m_input.text;
-                if (text.ToLower().Equals($"{typeof(BepInExPlugin).Namespace.ToLower()} reset"))
-                {
-                    context.Config.Reload();
-                    context.Config.Save();
-                    Traverse.Create(__instance).Method("AddString", new object[] { text }).GetValue();
-                    Traverse.Create(__instance).Method("AddString", new object[] { $"{context.Info.Metadata.Name} config reloaded" }).GetValue();
-                    return false;
-                }
-                return true;
+                continue;
             }
+
+            int x = index % width;
+            int y = index / width + (player ? _playerSortStartRow.Value - 1 : 0);
+            item.m_gridPos = new Vector2i(x, y);
+            index++;
         }
+
+        inventory.Changed(false, false);
     }
 }
