@@ -29,7 +29,7 @@ namespace SimpleSort
 
         public static bool Prefix(TombStone __instance, Humanoid character, bool hold, ref bool __result)
         {
-            if (!modEnabled.Value || !graveRestoreOriginalSlots.Value || hold)
+            if (!BepInExPlugin.modEnabled.Value || !BepInExPlugin.graveRestoreOriginalSlots.Value || hold)
                 return true;
             Player player = character as Player;
             if (player == null || player.GetInventory() == null)
@@ -50,7 +50,7 @@ namespace SimpleSort
             }
             catch (Exception e)
             {
-                Dbgl("grave slot restore failed, using vanilla looting: " + e);
+                BepInExPlugin.Dbgl("grave slot restore failed, using vanilla looting: " + e);
                 return true;
             }
         }
