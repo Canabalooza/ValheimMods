@@ -10,12 +10,11 @@ namespace SimpleSort
     // CreateTombStone/MoveInventoryToGrave snapshot the player grid exactly, so every
     // grave stack still carries its death m_gridPos. Desired behavior:
     //  - empty inventory: every stack goes back into its exact death slot.
-    //  - inventory not empty but everything fits: stacks colliding with grave slots
-    //    get pushed into free slots (never onto other grave target slots), then every
-    //    grave stack lands in its exact death slot.
-    //  - inventory too full: only grave stacks whose original slot is free (and that
-    //    don't exceed carry weight) move; nothing else is touched; the rest stays in
-    //    the grave for a later visit.
+    //  - inventory not empty: stacks colliding with grave slots get pushed into free
+    //    slots (never onto other grave target slots), then every grave stack lands in
+    //    its exact death slot; greedily, stack by stack.
+    //  - a grave stack is only left behind when the inventory is genuinely full
+    //    (no free slot to push into) or picking it would exceed carry weight.
     // Items are transplanted as ItemData references (no clone, no stack-merge, no
     // auto-place scatter that vanilla MoveAll's fallback pass does). Inventory.Changed
     // is fired via reflection so weight/UI/ZDO-save events run as usual. Anything
@@ -69,9 +68,12 @@ namespace SimpleSort
                     targets.Add(s.m_gridPos);
 
             float weight = dest.GetTotalWeight();
-            bool fits = dest.GetAllItems().Count + stacks.Count <= w * h
-                && weight + grave.GetTotalWeight() <= player.GetMaxCarryWeight();
+            List<ItemDrop.ItemData> outOfRange = new List<ItemDrop.ItemData>();
 
+            // greedy: always restore in-place when possible, pushing the occupant into a
+            // free slot (never one reserved for another grave stack). Only leaves a grave
+            // stack behind when there is genuinely no free slot left or it would
+            // overweight the player.
             foreach (ItemDrop.ItemData s in stacks)
             {
                 Vector2i p = s.m_gridPos;
@@ -79,27 +81,30 @@ namespace SimpleSort
                     continue; // leave overweight stacks in the grave
                 if (!InRange(p, w, h))
                 {
-                    // grid shape changed since death (e.g. Megingjord): only relocate when everything fits
-                    if (!fits)
-                        continue;
-                    Vector2i free = FindFree(dest, targets, w, h);
-                    if (free.x < 0)
-                        continue;
-                    Move(grave, dest, s, free);
-                    weight += s.GetWeight();
+                    // grid shape changed since death (e.g. Megingjord): place last, anywhere free
+                    outOfRange.Add(s);
                     continue;
                 }
                 ItemDrop.ItemData occupant = dest.GetItemAt(p.x, p.y);
                 if (occupant != null)
                 {
-                    if (!fits)
-                        continue; // strict mode: never rearrange the player's items
                     Vector2i free = FindFree(dest, targets, w, h);
                     if (free.x < 0)
-                        continue;
+                        continue; // full: leave this grave stack, occupant stays put
                     occupant.m_gridPos = free;
                 }
                 Move(grave, dest, s, p);
+                weight += s.GetWeight();
+            }
+
+            foreach (ItemDrop.ItemData s in outOfRange)
+            {
+                if (weight + s.GetWeight() > player.GetMaxCarryWeight())
+                    continue;
+                Vector2i free = FindFree(dest, targets, w, h);
+                if (free.x < 0)
+                    break;
+                Move(grave, dest, s, free);
                 weight += s.GetWeight();
             }
 
