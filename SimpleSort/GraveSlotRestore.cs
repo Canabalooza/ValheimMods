@@ -64,22 +64,22 @@ namespace SimpleSort
 
             HashSet<Vector2i> targets = new HashSet<Vector2i>();
             foreach (ItemDrop.ItemData s in stacks)
-                if (Fits(s, s.m_gridPos, w, h))
-                    AddFootprint(targets, s);
+                if (InRange(s.m_gridPos, w, h))
+                    targets.Add(s.m_gridPos);
 
             float weight = dest.GetTotalWeight();
             List<ItemDrop.ItemData> outOfRange = new List<ItemDrop.ItemData>();
 
             // greedy: always restore in-place when possible, pushing the occupant into a
-            // free area (never one reserved for another grave stack). Only leaves a grave
-            // stack behind when there is genuinely no free space left or it would
+            // free slot (never one reserved for another grave stack). Only leaves a grave
+            // stack behind when there is genuinely no free slot left or it would
             // overweight the player.
             foreach (ItemDrop.ItemData s in stacks)
             {
                 Vector2i p = s.m_gridPos;
                 if (weight + s.GetWeight() > player.GetMaxCarryWeight())
                     continue; // leave overweight stacks in the grave
-                if (!Fits(s, p, w, h))
+                if (!InRange(p, w, h))
                 {
                     // grid shape changed since death (e.g. Megingjord): place last, anywhere free
                     outOfRange.Add(s);
@@ -88,7 +88,7 @@ namespace SimpleSort
                 ItemDrop.ItemData occupant = dest.GetItemAt(p.x, p.y);
                 if (occupant != null)
                 {
-                    Vector2i free = FindFreeArea(dest, targets, w, h, occupant);
+                    Vector2i free = FindFree(dest, targets, w, h);
                     if (free.x < 0)
                         continue; // full: leave this grave stack, occupant stays put
                     occupant.m_gridPos = free;
@@ -101,7 +101,7 @@ namespace SimpleSort
             {
                 if (weight + s.GetWeight() > player.GetMaxCarryWeight())
                     continue;
-                Vector2i free = FindFreeArea(dest, targets, w, h, s);
+                Vector2i free = FindFree(dest, targets, w, h);
                 if (free.x < 0)
                     break;
                 Move(grave, dest, s, free);
@@ -112,35 +112,18 @@ namespace SimpleSort
             m_changed.Invoke(grave, new object[] { false, false });
         }
 
-        private static bool Fits(ItemDrop.ItemData item, Vector2i p, int w, int h)
+        private static bool InRange(Vector2i p, int w, int h)
         {
-            return p.x >= 0 && p.y >= 0 && p.x + item.m_size.x <= w && p.y + item.m_size.y <= h;
+            return p.x >= 0 && p.y >= 0 && p.x < w && p.y < h;
         }
 
-        private static void AddFootprint(HashSet<Vector2i> set, ItemDrop.ItemData item)
+        // first empty slot that is not reserved for a grave stack (top-left to bottom-right)
+        private static Vector2i FindFree(Inventory inv, HashSet<Vector2i> reserved, int w, int h)
         {
-            for (int dx = 0; dx < item.m_size.x; dx++)
-                for (int dy = 0; dy < item.m_size.y; dy++)
-                    set.Add(new Vector2i(item.m_gridPos.x + dx, item.m_gridPos.y + dy));
-        }
-
-        // first free rectangular area big enough for item, skipping cells reserved for grave stacks
-        private static Vector2i FindFreeArea(Inventory inv, HashSet<Vector2i> reserved, int w, int h, ItemDrop.ItemData item)
-        {
-            for (int y = 0; y + item.m_size.y <= h; y++)
-                for (int x = 0; x + item.m_size.x <= w; x++)
-                {
-                    bool ok = true;
-                    for (int dx = 0; dx < item.m_size.x && ok; dx++)
-                        for (int dy = 0; dy < item.m_size.y && ok; dy++)
-                        {
-                            Vector2i c = new Vector2i(x + dx, y + dy);
-                            if (reserved.Contains(c) || inv.GetItemAt(c.x, c.y) != null)
-                                ok = false;
-                        }
-                    if (ok)
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    if (!reserved.Contains(new Vector2i(x, y)) && inv.GetItemAt(x, y) == null)
                         return new Vector2i(x, y);
-                }
             return new Vector2i(-1, -1);
         }
 
