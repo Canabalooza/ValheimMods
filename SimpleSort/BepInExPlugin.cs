@@ -24,6 +24,7 @@ namespace SimpleSort
         public static ConfigEntry<SortType> containerSortType;
         public static ConfigEntry<bool> playerSortAsc;
         public static ConfigEntry<bool> containerSortAsc;
+        public static ConfigEntry<bool> graveRestoreOriginalSlots;
         public static ConfigEntry<string> ascModKey;
         public static ConfigEntry<string> descModKey;
         public static ConfigEntry<string> sortByNameKey;
@@ -57,6 +58,7 @@ namespace SimpleSort
             containerSortAsc = Config.Bind<bool>("General", "containerSortAsc", true, "Current container sort method (changes automatically for sticky sorting)");
             playerSortType = Config.Bind<SortType>("General", "PlayerSortType", SortType.Name, "Current player sort type (changes automatically for sticky sorting)");
             containerSortType = Config.Bind<SortType>("General", "ContainerSortType", SortType.Name, "Current container sort type (changes automatically for sticky sorting)");
+            graveRestoreOriginalSlots = Config.Bind<bool>("General", "GraveRestoreOriginalSlots", true, "When looting your own grave, restore items to the exact inventory slots they were in at death (existing items get pushed to free slots if everything fits; if it doesn't all fit, only stacks whose original slot is free are taken, nothing is reordered)");
             sortByValueKey = Config.Bind<string>("General", "SortByValueKey", "v", "Sort by value key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
             sortByWeightKey = Config.Bind<string>("General", "SortByWeightKey", "h", "Sort by weight key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
             sortByNameKey = Config.Bind<string>("General", "SortByNameKey", "n", "Sort by name key. Use https://docs.unity3d.com/Manual/class-InputManager.html format.");
@@ -89,7 +91,7 @@ namespace SimpleSort
                 {
                     SortByType(playerSortType.Value, Player.m_localPlayer.GetInventory(), playerSortAsc.Value, true);
                 }
-                if(containerStickySort.Value && ___m_currentContainer?.GetInventory() != null)
+                if(containerStickySort.Value && ___m_currentContainer?.GetInventory() != null && ___m_currentContainer.GetComponent<TombStone>() == null)
                 {
                     SortByType(containerSortType.Value, ___m_currentContainer.GetInventory(), containerSortAsc.Value, false);
                 }
