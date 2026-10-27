@@ -35,7 +35,7 @@ namespace SimpleSort
             }
             catch (Exception e)
             {
-                BepInExPlugin.context?.Log.LogWarning("grave auto-loot sort skipped: " + e.Message);
+                BepInExPlugin.Dbgl("grave auto-loot sort skipped: " + e.Message);
             }
         }
     }

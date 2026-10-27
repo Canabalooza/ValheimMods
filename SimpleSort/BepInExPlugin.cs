@@ -75,7 +75,7 @@ namespace SimpleSort
         public void OnDestroy()
         {
             Dbgl("Destroying plugin");
-            harmony.UnpatchAll();
+            harmony.UnpatchSelf();
         }
 
         [HarmonyPatch(typeof(InventoryGui), "Show")]
