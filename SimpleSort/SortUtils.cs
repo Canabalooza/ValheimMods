@@ -1,66 +1,82 @@
-﻿using HarmonyLib;
+using System;
 using System.Collections.Generic;
 
-public class SortUtils
+namespace SimpleSort;
+
+internal static class SortUtils
 {
-
-    public static void SortByName(List<ItemDrop.ItemData> items, bool asc, bool player)
+    internal static void SortByName(List<ItemDrop.ItemData> items, bool ascending)
     {
-        items.Sort(delegate (ItemDrop.ItemData a, ItemDrop.ItemData b) {
-
+        items.Sort((a, b) =>
+        {
             if (a.m_shared.m_name == b.m_shared.m_name)
             {
                 return CompareInts(a.m_stack, b.m_stack, false);
             }
-            return CompareStrings(Localization.instance.Localize(a.m_shared.m_name), Localization.instance.Localize(b.m_shared.m_name), asc);
+
+            return CompareStrings(
+                Localization.instance.Localize(a.m_shared.m_name),
+                Localization.instance.Localize(b.m_shared.m_name),
+                ascending);
         });
     }
-    public static void SortByWeight(List<ItemDrop.ItemData> items, bool asc, bool player)
+
+    internal static void SortByWeight(List<ItemDrop.ItemData> items, bool ascending)
     {
-        items.Sort(delegate (ItemDrop.ItemData a, ItemDrop.ItemData b) {
-            if (a.m_shared.m_weight == b.m_shared.m_weight)
+        items.Sort((a, b) =>
+        {
+            if (Math.Abs(a.m_shared.m_weight - b.m_shared.m_weight) < float.Epsilon)
             {
                 if (a.m_shared.m_name == b.m_shared.m_name)
+                {
                     return CompareInts(a.m_stack, b.m_stack, false);
-                return CompareStrings(Localization.instance.Localize(a.m_shared.m_name), Localization.instance.Localize(b.m_shared.m_name), true);
+                }
+
+                return CompareStrings(
+                    Localization.instance.Localize(a.m_shared.m_name),
+                    Localization.instance.Localize(b.m_shared.m_name),
+                    true);
             }
-            return CompareFloats(a.m_shared.m_weight, b.m_shared.m_weight, asc);
+
+            return CompareFloats(a.m_shared.m_weight, b.m_shared.m_weight, ascending);
         });
     }
-    public static void SortByValue(List<ItemDrop.ItemData> items, bool asc, bool player)
+
+    internal static void SortByValue(List<ItemDrop.ItemData> items, bool ascending)
     {
-        items.Sort(delegate (ItemDrop.ItemData a, ItemDrop.ItemData b) {
+        items.Sort((a, b) =>
+        {
             if (a.m_shared.m_value == b.m_shared.m_value)
             {
                 if (a.m_shared.m_name == b.m_shared.m_name)
+                {
                     return CompareInts(a.m_stack, b.m_stack, false);
-                return CompareStrings(Localization.instance.Localize(a.m_shared.m_name), Localization.instance.Localize(b.m_shared.m_name), true);
+                }
+
+                return CompareStrings(
+                    Localization.instance.Localize(a.m_shared.m_name),
+                    Localization.instance.Localize(b.m_shared.m_name),
+                    true);
             }
-            return CompareInts(a.m_shared.m_value, b.m_shared.m_value, asc);
+
+            return CompareInts(a.m_shared.m_value, b.m_shared.m_value, ascending);
         });
     }
 
-    public static int CompareStrings(string a, string b, bool asc)
+    private static int CompareStrings(string a, string b, bool ascending)
     {
-        if (asc)
-            return a.CompareTo(b);
-        else
-            return b.CompareTo(a);
+        return ascending
+            ? string.Compare(a, b, StringComparison.CurrentCulture)
+            : string.Compare(b, a, StringComparison.CurrentCulture);
     }
 
-    public static int CompareFloats(float a, float b, bool asc)
+    private static int CompareFloats(float a, float b, bool ascending)
     {
-        if (asc)
-            return a.CompareTo(b);
-        else
-            return b.CompareTo(a);
+        return ascending ? a.CompareTo(b) : b.CompareTo(a);
     }
 
-    public static int CompareInts(float a, float b, bool asc)
+    private static int CompareInts(int a, int b, bool ascending)
     {
-        if (asc)
-            return a.CompareTo(b);
-        else
-            return b.CompareTo(a);
+        return ascending ? a.CompareTo(b) : b.CompareTo(a);
     }
 }
